@@ -1,9 +1,15 @@
-name: Deploy to ECR
+name: Deploy to ECR and EKS
 
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: '0 0 * * 1'  # Runs every Monday at midnight UTC
+  workflow_dispatch:  # Allows manual triggering
 
 env:
   ECR_REPOSITORY: kajal-repo
