@@ -22,12 +22,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
+      - name: List Files
+        run: ls -la docker
+
       - name: Install Snyk CLI
         run: npm install -g snyk
 
       - name: Build Docker image
         run: |
-          docker build -t my-image:latest .
+          docker build -t my-image:latest -f docker/Dockerfile .
 
       - name: Authenticate Snyk
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
