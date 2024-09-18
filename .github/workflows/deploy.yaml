@@ -1,4 +1,4 @@
-name: Build, Test, and Push to ECR
+name: Build, Test, and Push Image to ECR
 
 on:
   push:
@@ -52,20 +52,30 @@ jobs:
           node-version: '16'
 
       - name: Install Latest Snyk CLI
-        run: |
-          npm install -g snyk
+        run: npm install -g snyk
 
       - name: Snyk Authentication
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
 
-      - name: List Docker images
-        run: docker images
-
       - name: Snyk Docker Scan
+        id: snyk-scan
         run: |
-          snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} --severity-threshold=low --json
+          snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} --severity-threshold=low --json > snyk-result.json
+
+      - name: Count total number of vulnerabilities
+        id: count-vulnerabilities
+        run: |
+          RESULTS_LENGTH=$(jq '.vulnerabilities | length' snyk-result.json)
+          echo "RESULTS_LENGTH=$RESULTS_LENGTH" >> $GITHUB_ENV
+          echo "Vulnerabilities found: $RESULTS_LENGTH"
+
+      - name: Fail job if vulnerabilities are found
+        if: ${{ env.RESULTS_LENGTH != '0' }}
+        run: |
+          echo "Job failed due to vulnerabilities."
+          exit 1
 
       - name: Push Docker image to Amazon ECR
+        if: ${{ env.RESULTS_LENGTH == '0' }}
         run: |
           docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }}
-
