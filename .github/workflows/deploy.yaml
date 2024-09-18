@@ -68,7 +68,7 @@ jobs:
       # Snyk scan for vulnerabilities in the Docker image
       - name: Snyk Docker Scan
         run: |
-          snyk test --docker ***.dkr.ecr.eu-west-1.amazonaws.com/kajal-repo:b2529e6-2024-09-18-07-23 --severity-threshold=low --json
+          snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} --severity-threshold=low --json
 
       # Push Docker image to ECR
       - name: Push Docker image to Amazon ECR
