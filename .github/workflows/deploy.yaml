@@ -11,7 +11,7 @@ permissions:
   contents: read  # Required for actions/checkout
 
 env:
-  ECR_REPOSITORY: nexus-repo
+  ECR_REPOSITORY: kajal-repo
   AWS_REGION: eu-west-1    
 
 jobs:
@@ -49,6 +49,14 @@ jobs:
           docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG} -f docker/Dockerfile .
           docker images
 
+      - name: Scan Docker image for vulnerabilities
+        id: snyk-scan
+        run: |
+          snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} --severity-threshold=low --json > snyk-result.json || { echo 'Snyk scan failed'; cat snyk-result.json; exit 1; }
+      
+      - name: Authenticate Snyk
+        run: snyk auth ${{ secrets.SNYK_TOKEN }}
+
       - name: Push image to Amazon ECR
         run: |
           docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
@@ -58,12 +66,3 @@ jobs:
 
       - name: List Images in ECR Repository
         run: aws ecr list-images --repository-name ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }}
-
-      - name: Set up Snyk CLI
-        run: npm install -g snyk
-
-      - name: Authenticate Snyk
-        run: snyk auth ${{ secrets.SNYK_TOKEN }}
-
-      - name: Scan Docker image for vulnerabilities
-        run: snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} --debug
