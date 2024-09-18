@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write # Required for requesting the JWT
-  contents: read  # Required for actions/checkout
+  id-token: write
+  contents: read
 
 jobs:
   build_and_scan:
@@ -30,11 +30,18 @@ jobs:
 
       - name: Build Docker image
         run: |
-          docker build -t my-image:latest -f docker/Dockerfile .
+          IMAGE_TAG="${{ github.sha }}"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          docker build -t my-image:${IMAGE_TAG} -f docker/Dockerfile .
+          docker images
 
       - name: Authenticate Snyk
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
 
       - name: Scan Docker image for vulnerabilities
         run: |
-          snyk test --docker my-image:latest --severity-threshold=low --json > snyk-result.json || { echo 'Snyk scan failed'; cat snyk-result.json; exit 1; }
+          snyk test --docker my-image:${{ env.IMAGE_TAG }} --severity-threshold=low --json > snyk-result.json || { echo 'Snyk scan failed'; cat snyk-result.json; exit 1; }
+
+      - name: Display Snyk scan result
+        if: failure()
+        run: cat snyk-result.json
