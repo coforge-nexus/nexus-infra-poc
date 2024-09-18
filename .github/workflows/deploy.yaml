@@ -22,9 +22,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
 
-      - name: List Files
-        run: ls -la docker
-
       - name: Install Snyk CLI
         run: npm install -g snyk
 
@@ -40,8 +37,7 @@ jobs:
 
       - name: Scan Docker image for vulnerabilities
         run: |
-          snyk test --docker my-image:${{ env.IMAGE_TAG }} --severity-threshold=low --json > snyk-result.json || { echo 'Snyk scan failed'; cat snyk-result.json; exit 1; }
+          snyk test --docker my-image:${{ env.IMAGE_TAG }} --severity-threshold=low --json > snyk-result.json || { echo 'Snyk scan failed'; cat snyk-result.json || echo 'No JSON output'; exit 1; }
 
-      - name: Display Snyk scan result
-        if: failure()
+      - name: Display Snyk result
         run: cat snyk-result.json
