@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write  # Required for requesting the JWT
-  contents: read   # Required for actions/checkout
+  id-token: write
+  contents: read
 
 env:
   ECR_REPOSITORY: kajal-repo
@@ -46,43 +46,26 @@ jobs:
         run: |
           docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} -f docker/Dockerfile .
 
-      # Install Node.js (required for npm)
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '16'
 
-      # Install Latest Snyk CLI
       - name: Install Latest Snyk CLI
         run: |
           npm install -g snyk
 
-      # Authenticate with Snyk
       - name: Snyk Authentication
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
 
-      # List Docker images for verification
       - name: List Docker images
         run: docker images
 
-      # Snyk scan for vulnerabilities in the Docker image
       - name: Snyk Docker Scan
         run: |
           snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} --severity-threshold=low --json
 
-      # Push Docker image to ECR
       - name: Push Docker image to Amazon ECR
         run: |
           docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }}
 
-  pull_image:
-    name: Pull Image from ECR
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v1
-
-      - name: Pull Docker image from ECR
-        run: |
-          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }}
