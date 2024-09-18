@@ -60,14 +60,19 @@ jobs:
       - name: Snyk Docker Scan
         id: snyk-scan
         run: |
-          snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} --severity-threshold=low --json > snyk-result.json
+          snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} --severity-threshold=low --json > snyk-result.json || { echo 'Snyk scan failed'; cat snyk-result.json; exit 1; }
 
       - name: Count total number of vulnerabilities
         id: count-vulnerabilities
         run: |
-          RESULTS_LENGTH=$(jq '.vulnerabilities | length' snyk-result.json)
-          echo "RESULTS_LENGTH=$RESULTS_LENGTH" >> $GITHUB_ENV
-          echo "Vulnerabilities found: $RESULTS_LENGTH"
+          if [ -f snyk-result.json ]; then
+            RESULTS_LENGTH=$(jq '.vulnerabilities | length' snyk-result.json)
+            echo "RESULTS_LENGTH=$RESULTS_LENGTH" >> $GITHUB_ENV
+            echo "Vulnerabilities found: $RESULTS_LENGTH"
+          else
+            echo "Snyk result file not found."
+            echo "RESULTS_LENGTH=0" >> $GITHUB_ENV
+          fi
 
       - name: Fail job if vulnerabilities are found
         if: ${{ env.RESULTS_LENGTH != '0' }}
