@@ -1,4 +1,4 @@
-name: Deploy to ECR  
+name: Build, Test, and Push to ECR
 
 on:
   push:
@@ -7,16 +7,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write # Required for requesting the JWT
-  contents: read  # Required for actions/checkout
+  id-token: write  # Required for requesting the JWT
+  contents: read   # Required for actions/checkout
 
 env:
-  ECR_REPOSITORY: kajal-repo
+  ECR_REPOSITORY: nexus-repo
   AWS_REGION: eu-west-1    
 
 jobs:
-  build:
-    name: Build, Scan, and Push Image
+  build_test_push:
+    name: Build, Test, and Push Image to ECR
     runs-on: ubuntu-latest
 
     steps:
@@ -41,29 +41,48 @@ jobs:
         id: get-timestamp
         run: echo "timestamp=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_ENV
 
-      - name: Build the Docker image
+      - name: Build Docker image
         id: build-image
         run: |
-          IMAGE_TAG="${{ env.commit_hash }}-${{ env.timestamp }}"
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${IMAGE_TAG} -f docker/Dockerfile .
-          docker images
+          docker build -t ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} -f docker/Dockerfile .
 
-      - name: Push image to Amazon ECR
+      # Install Node.js (required for npm)
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '16'
+
+      # Install Latest Snyk CLI
+      - name: Install Latest Snyk CLI
         run: |
-          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }}
+          npm install -g snyk
 
-      - name: Check ECR Repository
-        run: aws ecr describe-repositories --region ${{ env.AWS_REGION }}
-
-      - name: List Images in ECR Repository
-        run: aws ecr list-images --repository-name ${{ env.ECR_REPOSITORY }} --region ${{ env.AWS_REGION }}
-
-      - name: Set up Snyk CLI
-        run: npm install -g snyk
-
-      - name: Authenticate Snyk
+      # Authenticate with Snyk
+      - name: Snyk Authentication
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
 
-      - name: Scan Docker image for vulnerabilities
-        run: snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.IMAGE_TAG }} --debug
+      # List Docker images for verification
+      - name: List Docker images
+        run: docker images
+
+      # Snyk scan for vulnerabilities in the Docker image
+      - name: Snyk Docker Scan
+        run: |
+          snyk test --docker ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }} --severity-threshold=high --all-projects --json
+
+      # Push Docker image to ECR
+      - name: Push Docker image to Amazon ECR
+        run: |
+          docker push ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }}
+
+  pull_image:
+    name: Pull Image from ECR
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v1
+
+      - name: Pull Docker image from ECR
+        run: |
+          docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }}
