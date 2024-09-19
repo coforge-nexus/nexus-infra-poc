@@ -59,6 +59,16 @@ jobs:
       - name: Authenticate Snyk
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
 
+      - name: Monitor Docker image with Snyk
+        id: snyk-monitor
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
+        run: |
+          echo "Monitoring Docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG on Snyk dashboard"
+          snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG || echo 'Snyk monitoring failed'
+
       - name: Scan Docker image with Snyk
         id: snyk-scan
         env:
