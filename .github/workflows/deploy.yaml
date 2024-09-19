@@ -64,6 +64,9 @@ jobs:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
         run: snyk auth $SNYK_TOKEN
 
+      - name: Check if Docker image exists
+        run: docker images | grep ${{ env.ECR_REPOSITORY }}
+
       - name: Scan Docker image for vulnerabilities
         run: |
           snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || true
@@ -75,7 +78,9 @@ jobs:
           fi
 
       - name: Monitor Docker image in Snyk (Upload to Dashboard)
-        run: snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low
+        run: |
+          echo "Monitoring Docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG in Snyk"
+          snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low
 
       - name: Push Docker image to Amazon ECR
         run: |
