@@ -59,10 +59,10 @@ jobs:
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
       # Verify if the image was built correctly
-      - name: Verify Docker Image
+      - name: Verify Docker Image Exists Locally
         run: |
-          echo "Verifying Docker image details..."
-          docker images | grep $ECR_REPOSITORY || echo "Docker image not found"
+          echo "Verifying Docker image..."
+          docker images | grep $ECR_REPOSITORY || { echo "Error: Docker image not found locally."; exit 1; }
 
       # Install Snyk CLI
       - name: Install Snyk CLI
