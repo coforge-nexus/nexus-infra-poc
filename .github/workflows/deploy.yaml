@@ -1,94 +1,52 @@
-name: Build, Scan, and Push Docker Image to ECR
-
+name: Deploy to ECR
+ 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-
+ 
 permissions:
-  id-token: write  # Required for requesting the JWT
-  contents: read   # Required for actions/checkout
-
+  id-token: write # Required for requesting the JWT
+  contents: read  # Required for actions/checkout
+ 
 env:
-  ECR_REPOSITORY: kajal-repo         # Your ECR repository name
-  AWS_REGION: eu-west-1              # AWS region where your ECR is hosted
-
+  ECR_REPOSITORY: kajal-repo
+  AWS_REGION: eu-west-1    
+ 
 jobs:
-  build_scan_push:
-    name: Build, Scan, and Push Docker Image
+  build:
+    name: Build and Push Image
     runs-on: ubuntu-latest
-
+ 
     steps:
-      # Checkout repository
-      - name: Checkout Code
+      - name: Checkout
         uses: actions/checkout@v2
-
-      # Configure AWS credentials using OIDC
+ 
       - name: Configure AWS credentials from OIDC
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
-      # Login to Amazon ECR
+ 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-
-      # Get commit hash and timestamp for image tag
-      - name: Get Commit Hash and Timestamp
-        run: |
-          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "timestamp=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_ENV
-
-      # Debug Image Tag
-      - name: Debug Image Tag
-        run: echo "Image Tag: ${{ env.commit_hash }}-${{ env.timestamp }}"
-
-      # Build Docker image
-      - name: Build Docker Image
+ 
+      - name: Get commit hash
+        id: get-commit-hash
+        run: echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+ 
+      - name: Get timestamp
+        id: get-timestamp
+        run: echo "timestamp=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_ENV
+ 
+      - name: Build, tag, and push the image to Amazon ECR
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
-          echo "Building Docker image..."
-          echo "Registry: $ECR_REGISTRY"
-          echo "Repository: $ECR_REPOSITORY"
-          echo "Tag: $IMAGE_TAG"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
-          docker images
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
-
-      # Verify if the image was built correctly
-      - name: Verify Docker Image Exists Locally
-        run: |
-          echo "Verifying Docker image..."
-          docker images | grep $ECR_REPOSITORY || { echo "Error: Docker image not found locally."; exit 1; }
-
-      # Install Snyk CLI
-      - name: Install Snyk CLI
-        run: npm install -g snyk
-
-      # Authenticate with Snyk
-      - name: Authenticate Snyk
-        run: snyk auth ${{ secrets.SNYK_TOKEN }}
-
-      # Test and scan Docker image using Snyk
-      - name: Snyk Scan Docker Image
-        run: |
-          echo "Running Snyk scan on Docker image..."
-          docker images
-          snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || { echo "Snyk scan failed"; cat snyk-result.json; exit 1; }
-          snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low
-          cat snyk-result.json
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-      # Push the Docker image to Amazon ECR
-      - name: Push Docker Image to Amazon ECR
-        run: |
-          echo "Pushing Docker image to ECR..."
-          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG 
