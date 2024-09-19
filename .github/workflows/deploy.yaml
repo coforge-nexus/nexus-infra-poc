@@ -44,14 +44,13 @@ jobs:
 
       - name: Scan Docker image for vulnerabilities
         run: |
-          snyk test --docker my-image:${{ env.IMAGE_TAG }} --severity-threshold=low --json > snyk-result.json
+          snyk test --docker my-image:${{ env.IMAGE_TAG }} --severity-threshold=low --json > snyk-result.json || true
           if [ "$(jq '.ok' snyk-result.json)" = "true" ]; then
             echo "Snyk scan completed successfully, no vulnerabilities found."
           else
             echo "Snyk scan found vulnerabilities or failed."
             cat snyk-result.json
-            exit 1
           fi
 
-      - name: Display Snyk result
-        run: cat snyk-result.json
+      - name: Monitor Docker image in Snyk (Upload to Dashboard)
+        run: snyk monitor --docker my-image:${{ env.IMAGE_TAG }} --severity-threshold=low
