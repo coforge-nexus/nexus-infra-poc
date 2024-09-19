@@ -1,4 +1,4 @@
-name: Deploy to ECR
+name: Build, Scan, and Push Docker Image to ECR
 
 on:
   push:
@@ -7,86 +7,73 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write # Required for requesting the JWT
-  contents: read  # Required for actions/checkout
+  id-token: write  # Required for requesting the JWT
+  contents: read   # Required for actions/checkout
 
 env:
-  ECR_REPOSITORY: kajal-repo
-  AWS_REGION: eu-west-1    
+  ECR_REPOSITORY: kajal-repo         # Replace with your ECR repository name
+  AWS_REGION: eu-west-1              # AWS region where your ECR is hosted
 
 jobs:
-  build:
-    name: Build, Scan, and Push Image
+  build_scan_push:
+    name: Build, Scan, and Push Docker Image
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      # Checkout repository
+      - name: Checkout Code
         uses: actions/checkout@v2
 
+      # Configure AWS credentials using OIDC
       - name: Configure AWS credentials from OIDC
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # Login to Amazon ECR
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Get commit hash
-        id: get-commit-hash
-        run: echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+      # Get commit hash and timestamp for image tag
+      - name: Get Commit Hash and Timestamp
+        run: |
+          echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "timestamp=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_ENV
 
-      - name: Get timestamp
-        id: get-timestamp
-        run: echo "timestamp=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_ENV
-
-      - name: Build Docker image
+      # Build Docker image
+      - name: Build Docker Image
         id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
-          echo "ECR Registry: $ECR_REGISTRY"
-          echo "ECR Repository: $ECR_REPOSITORY"
-          echo "Image Tag: $IMAGE_TAG"
+          echo "Building Docker image..."
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
           docker images
 
-      - name: Install Node.js for Snyk CLI
-        uses: actions/setup-node@v2
-        with:
-          node-version: '16'
-
+      # Install Snyk CLI
       - name: Install Snyk CLI
         run: npm install -g snyk
 
+      # Authenticate with Snyk
       - name: Authenticate Snyk
+        run: snyk auth ${{ secrets.SNYK_TOKEN }}
+
+      # Test and scan Docker image using Snyk, upload to Snyk Dashboard
+      - name: Snyk Scan Docker Image and Monitor
+        run: |
+          echo "Running Snyk scan on Docker image..."
+          snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || true
+          snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low
+          cat snyk-result.json
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        run: snyk auth $SNYK_TOKEN
 
-      - name: Check if Docker image exists
-        run: docker images | grep ${{ env.ECR_REPOSITORY }}
-
-      - name: Scan Docker image for vulnerabilities
+      # Push the Docker image to Amazon ECR
+      - name: Push Docker Image to Amazon ECR
         run: |
-          echo "Snyk scanning $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || true
-          cat snyk-result.json
-          if [ "$(jq '.ok' snyk-result.json)" = "true" ]; then
-            echo "Snyk scan completed successfully, no vulnerabilities found."
-          else
-            echo "Snyk scan found vulnerabilities or failed."
-            cat snyk-result.json
-          fi
-
-      - name: Monitor Docker image in Snyk (Upload to Dashboard)
-        run: |
-          echo "Monitoring Docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG in Snyk"
-          snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low
-
-      - name: Push Docker image to Amazon ECR
-        run: |
+          echo "Pushing Docker image to ECR..."
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
