@@ -49,6 +49,8 @@ jobs:
           IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
           echo "ECR Registry: $ECR_REGISTRY"
+          echo "ECR Repository: $ECR_REPOSITORY"
+          echo "Image Tag: $IMAGE_TAG"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
           docker images
 
@@ -72,6 +74,7 @@ jobs:
         run: |
           echo "Snyk scanning $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || true
+          cat snyk-result.json
           if [ "$(jq '.ok' snyk-result.json)" = "true" ]; then
             echo "Snyk scan completed successfully, no vulnerabilities found."
           else
