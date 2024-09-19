@@ -83,13 +83,17 @@ jobs:
 
       - name: Debug Docker image details
         run: |
-          echo "Registry: $ECR_REGISTRY"
-          echo "Repository: $ECR_REPOSITORY"
-          echo "Tag: $IMAGE_TAG"
-          echo "Docker image reference: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Registry: ${{ steps.login-ecr.outputs.registry }}"
+          echo "Repository: ${{ env.ECR_REPOSITORY }}"
+          echo "Tag: ${{ env.commit_hash }}-${{ env.timestamp }}"
+          echo "Docker image reference: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }}"
 
       - name: Push Docker Image to ECR
         if: always()  # Ensures this step runs regardless of previous steps' success or failure
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
           echo "Pushing Docker image to ECR: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
