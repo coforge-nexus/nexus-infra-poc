@@ -81,6 +81,13 @@ jobs:
           echo "Snyk scan result:"
           cat snyk-result.json
 
+      - name: Debug Docker image details
+        run: |
+          echo "Registry: $ECR_REGISTRY"
+          echo "Repository: $ECR_REPOSITORY"
+          echo "Tag: $IMAGE_TAG"
+          echo "Docker image reference: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+
       - name: Push Docker Image to ECR
         if: always()  # Ensures this step runs regardless of previous steps' success or failure
         run: |
