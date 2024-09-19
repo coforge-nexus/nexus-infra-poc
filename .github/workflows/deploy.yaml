@@ -11,7 +11,7 @@ permissions:
   contents: read  # Required for actions/checkout
 
 env:
-  ECR_REPOSITORY: kajal-repo
+  ECR_REPOSITORY: kajal-repo # Updated repository name
   AWS_REGION: eu-west-1    
 
 jobs:
@@ -48,6 +48,7 @@ jobs:
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
           IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
+          echo "ECR Registry: $ECR_REGISTRY"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
           docker images
 
@@ -69,6 +70,7 @@ jobs:
 
       - name: Scan Docker image for vulnerabilities
         run: |
+          echo "Snyk scanning $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || true
           if [ "$(jq '.ok' snyk-result.json)" = "true" ]; then
             echo "Snyk scan completed successfully, no vulnerabilities found."
