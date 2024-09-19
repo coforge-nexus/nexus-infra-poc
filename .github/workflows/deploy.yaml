@@ -55,8 +55,14 @@ jobs:
           echo "Repository: $ECR_REPOSITORY"
           echo "Tag: $IMAGE_TAG"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
-          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
           docker images
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+
+      # Verify if the image was built correctly
+      - name: Verify Docker Image
+        run: |
+          echo "Verifying Docker image details..."
+          docker images | grep $ECR_REPOSITORY || echo "Docker image not found"
 
       # Install Snyk CLI
       - name: Install Snyk CLI
@@ -66,17 +72,8 @@ jobs:
       - name: Authenticate Snyk
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
 
-      # Debug the Docker image details before the Snyk scan
-      - name: Debug Docker Image Details
-        run: |
-          echo "Debugging Docker image details before Snyk scan"
-          echo "Registry: $ECR_REGISTRY"
-          echo "Repository: $ECR_REPOSITORY"
-          echo "Tag: $IMAGE_TAG"
-          docker inspect $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG || echo "Image not found"
-
-      # Test and scan Docker image using Snyk, upload to Snyk Dashboard
-      - name: Snyk Scan Docker Image and Monitor
+      # Test and scan Docker image using Snyk
+      - name: Snyk Scan Docker Image
         run: |
           echo "Running Snyk scan on Docker image..."
           snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || true
