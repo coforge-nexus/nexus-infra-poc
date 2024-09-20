@@ -68,6 +68,7 @@ jobs:
         run: |
           echo "Monitoring Docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG on Snyk dashboard"
           snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG || echo 'Snyk monitoring failed'
+          echo 'Snyk monitoring always'
  
       - name: Scan Docker image with Snyk
         id: snyk-scan
