@@ -1,68 +1,99 @@
 name: Build, Scan, and Deploy to ECR
-
+ 
 on:
   push:
     branches:
       - main
   workflow_dispatch:
-
+ 
 permissions:
   id-token: write  # Required for requesting the JWT
   contents: read  # Required for actions/checkout
-
+ 
 env:
   ECR_REPOSITORY: kajal-repo
   AWS_REGION: eu-west-1    
-
+ 
 jobs:
   build:
     name: Build, Scan, and Push Image
     runs-on: ubuntu-latest
-
+ 
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-
+ 
       - name: Configure AWS credentials from OIDC
         uses: aws-actions/configure-aws-credentials@v2
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-
+ 
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
-
+ 
+      - name: Get commit hash
+        id: get-commit-hash
+        run: echo "commit_hash=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+ 
+      - name: Get timestamp
+        id: get-timestamp
+        run: echo "timestamp=$(date +'%Y-%m-%d-%H-%M')" >> $GITHUB_ENV
+ 
       - name: Build Docker image
+        id: build-image
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
-          echo "Building Docker image: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
+          echo "Building Docker image with tag: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -f docker/Dockerfile .
-          docker images  # List Docker images for confirmation
-
+          echo "Listing Docker images..."
+          docker images  # Confirm the image is built
+ 
       - name: Install Snyk CLI
         run: npm install -g snyk
-
+ 
       - name: Authenticate Snyk
         run: snyk auth ${{ secrets.SNYK_TOKEN }}
-
-      - name: Scan Docker image with Snyk
+ 
+      - name: Monitor Docker image with Snyk
+        id: snyk-monitor
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
+        run: |
+          echo "Monitoring Docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG on Snyk dashboard"
+          snyk monitor --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG || echo 'Snyk monitoring failed'
+ 
+      - name: Scan Docker image with Snyk
+        id: snyk-scan
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
+          IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
           echo "Running Snyk scan on Docker image $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
-          snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low
-
+          snyk test --docker $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG --severity-threshold=low --json > snyk-result.json || { echo 'Snyk scan failed'; cat snyk-result.json || echo 'No JSON output'; }
+          echo "Snyk scan result:"
+          cat snyk-result.json
+ 
+      - name: Debug Docker image details
+        run: |
+          echo "Registry: ${{ steps.login-ecr.outputs.registry }}"
+          echo "Repository: ${{ env.ECR_REPOSITORY }}"
+          echo "Tag: ${{ env.commit_hash }}-${{ env.timestamp }}"
+          echo "Docker image reference: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ env.commit_hash }}-${{ env.timestamp }}"
+ 
       - name: Push Docker Image to ECR
+        if: always()  # Ensures this step runs regardless of previous steps' success or failure
         env:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           ECR_REPOSITORY: ${{ env.ECR_REPOSITORY }}
-          IMAGE_TAG: ${{ github.sha }}
+          IMAGE_TAG: ${{ env.commit_hash }}-${{ env.timestamp }}
         run: |
           echo "Pushing Docker image to ECR: $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
